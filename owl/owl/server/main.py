@@ -28,6 +28,7 @@ from colorama import init, Fore, Style, Back
 from fastapi import Depends
 from ..services.stt.streaming.streaming_whisper.streaming_whisper_server import start_streaming_whisper_server
 from ..services.stt.asynchronous.async_whisper.async_whisper_transcription_server import start_async_transcription_server
+from ..services import FaceService
 
 from .streaming_capture_handler import StreamingCaptureHandler
 
@@ -84,6 +85,7 @@ def create_server_app(config: Configuration) -> FastAPI:
     capture_service = CaptureService(config=config, database=database)
     bing_search_service = BingSearchService(config=config.bing) if config.bing else None
     conversation_service = ConversationService(config, database, transcription_service, notification_service, bing_search_service)
+    face_service = FaceService(config=config.aws)
 
     # Create server app
     app = FastAPI()
@@ -94,7 +96,8 @@ def create_server_app(config: Configuration) -> FastAPI:
         conversation_service=conversation_service,
         llm_service=llm_service,
         notification_service=notification_service,
-        bing_search_service=bing_search_service
+        bing_search_service=bing_search_service,
+        face_service=face_service
     )
     socket_app = CaptureSocketApp(app_state = AppState.get(from_obj=app))
     socket_app.mount_to(app=app, at_path="/socket.io")

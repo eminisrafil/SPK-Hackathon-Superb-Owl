@@ -8,6 +8,7 @@ from ..services import CaptureService, ConversationService, LLMService, Notifica
 from .streaming_capture_handler import StreamingCaptureHandler
 from ..database.database import Database
 from ..services import ConversationDetectionService
+from ..services import FaceService
 from queue import Queue
 
 @dataclass
@@ -24,6 +25,7 @@ class AppState:
     llm_service: LLMService
     notification_service: NotificationService
     bing_search_service: BingSearchService
+    face_service: FaceService
     
     capture_handlers: Dict[str, StreamingCaptureHandler] = field(default_factory=lambda: {})
     conversation_detection_service_by_id: Dict[str, ConversationDetectionService] = field(default_factory=lambda: {})

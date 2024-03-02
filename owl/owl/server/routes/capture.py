@@ -58,7 +58,8 @@ async def upload_image(
     extension = os.path.splitext(file.filename)[1]
     filepath = CaptureDirectory(config=app_state.config).get_image_filepath(capture_file=capture, conversation_uuid=conversation.conversation_uuid, timestamp=timestamp, extension=extension)
     with open(filepath, "wb+") as file_object:
-        file_object.write(await file.read())
+        image_bytes = await file.read()
+        file_object.write(image_bytes)
     image = Image(
         filepath=filepath,
         conversation_uuid=conversation.conversation_uuid,
@@ -68,6 +69,7 @@ async def upload_image(
         conversation_id=conversation.id
     )
     create_image(db, image)
+    app_state.face_service.detect_faces(image_bytes=image_bytes)
     return JSONResponse(status_code=200, content={"message": f"File '{file.filename}' saved.'"})
 
 ####################################################################################################

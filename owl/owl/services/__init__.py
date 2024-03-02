@@ -4,3 +4,4 @@ from .endpointing.chunking.conversation_detection_service import ConversationDet
 from .notification.notification_service import NotificationService
 from .llm.llm_service import LLMService
 from .web_search.bing_search_service import BingSearchService
+from .faces.face_service import FaceService

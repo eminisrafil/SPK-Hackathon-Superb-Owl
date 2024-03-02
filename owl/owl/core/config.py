@@ -4,6 +4,12 @@ import os
 from typing import Optional
 
 
+class AWSConfiguration(BaseModel):
+    region_name: str
+    access_key: str
+    secret_access_key: str
+    rekognition_collection_id: str
+
 class LLMConfiguration(BaseModel):
     model: str
     api_base_url: str | None
@@ -92,6 +98,7 @@ class Configuration(BaseModel):
 
 
     llm: LLMConfiguration
+    aws: AWSConfiguration
     captures: CapturesConfiguration
     vad: VADConfiguration
     deepgram: DeepgramConfiguration
