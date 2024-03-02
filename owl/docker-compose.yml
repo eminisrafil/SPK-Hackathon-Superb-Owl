@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  backend:
+    image: etown/owl:latest
+    environment:
+      - OWL_ASYNC_WHISPER_HF_TOKEN=${OWL_ASYNC_WHISPER_HF_TOKEN}
+      - OWL_USER_CLIENT_TOKEN=${OWL_USER_CLIENT_TOKEN:-change_me}
+      - OWL_LLM_API_BASE_URL=${OWL_LLM_API_BASE_URL:-http://host.docker.internal:11434}
+      - OMP_NUM_THREADS=1
+
+    shm_size: 3g
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+
+  web:
+    image: etown/owl-web:latest
+    environment:
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+      - OWL_USER_CLIENT_TOKEN=${OWL_USER_CLIENT_TOKEN:-change_me}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
