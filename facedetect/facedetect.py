@@ -2,6 +2,7 @@ import argparse
 from math import atan2
 from math import cos
 from math import sin
+import time
 from typing import Dict, List, Tuple
 
 import cv2
@@ -168,9 +169,6 @@ def process_image(filepath: str) -> List[np.ndarray]:
         y2, x2 = normalized_face[175]
         cv2.line(img = out_image, pt1 = (x1, y1), pt2 = (x2, y2), color = (0, 0, 255), thickness = 2)
 
-        # Vertical flip (but why?)
-        #out_image = cv2.flip(out_image, 1)
-
         # Store
         out_images.append(out_image)
         normalized_faces.append(normalized_face)
@@ -183,7 +181,10 @@ if __name__ == "__main__":
     parser.add_argument("input", help = "Image file")
     options = parser.parse_args()
 
+    t0 = time.perf_counter()
     images = process_image(filepath=options.input)
+    t1 = time.perf_counter()
+    print(f"Processing took {(t1 - t0):1.2f} seconds")
     for i in range(len(images)):
         outfile = f"out-{i}.png"
         cv2.imwrite(outfile, images[i])
