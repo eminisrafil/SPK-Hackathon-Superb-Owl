@@ -52,7 +52,7 @@ def completeness(text):
 
 
 def main():
-    with open('transcription.pkl', 'rb') as f:
+    with open('../transcription.pkl', 'rb') as f:
         alternative = pickle.load(f)
         sequence_of_words = [word.word for word in alternative.words]
 

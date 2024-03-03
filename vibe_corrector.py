@@ -1,7 +1,5 @@
-import asyncio
 import csv
 import enum
-import functools
 import json
 import pickle
 import threading
@@ -10,9 +8,9 @@ import time
 import eventlet
 from scipy.spatial.distance import cosine
 
-import server
-from config import VIBE_SMOOTHING_FACTOR, VIBE_PERCENTAGE_THRESHOLD, MODEL_NAME, BEST_MODEL_NAME, COSINE_THRESHOLD
-from query_gpt import query_gpt, fetch_embeddings
+from manuel import server
+from manuel.config import VIBE_SMOOTHING_FACTOR, VIBE_PERCENTAGE_THRESHOLD, MODEL_NAME, BEST_MODEL_NAME, COSINE_THRESHOLD
+from manuel.query_gpt import query_gpt, fetch_embeddings
 
 """
 companion object {

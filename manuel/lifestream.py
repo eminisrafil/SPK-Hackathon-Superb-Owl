@@ -33,7 +33,7 @@ def main():
         def on_message(self, result, **kwargs):
             print("number of results: ", len(result.channel.alternatives))
             alternative, = result.channel.alternatives
-            with open('transcription.pkl', 'wb') as f:
+            with open('../transcription.pkl', 'wb') as f:
                 pickle.dump(alternative, f)
 
             # for alternative in result.channel.alternatives:
