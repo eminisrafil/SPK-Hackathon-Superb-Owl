@@ -1,122 +1,49 @@
-from __future__ import annotations
-
-from datetime import timezone, datetime
-
-from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, DateTime
-from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base, relationship, Mapped
-from sqlmodel import Session
-
-Base = declarative_base()
+import multiprocessing
 
 
-class Context(Base):
-    __tablename__ = "contexts"
-    created_at: datetime = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    updated_at: datetime = Column(DateTime, default=lambda: datetime.now(timezone.utc),
-                                  onupdate=lambda: datetime.now(timezone.utc), index=False)
-    id: int = Column(Integer, primary_key=True, index=True)
-    state: str = Column(String, index=True)
-    frames: Mapped["Frame"] = relationship("Frame", back_populates="context")
-    utterances: Mapped["Utterance"] = relationship("Utterance", back_populates="context")
+# class DataBase:
+#     def __init__(self):
+#         self.state = ""
+#         self.frames: list = []
+#         self.utterances: list['Utterance'] = []
 
 
-class Frame(Base):
-    __tablename__ = "frames"
-    id: int = Column(Integer, primary_key=True, index=True)
-    frame: int = Column(String, index=True)
-    context_id: int = Column(Integer, ForeignKey("contexts.id"))
-    created_at: datetime = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-    context: Mapped["Context"] = relationship("Context", back_populates="frames")
+class DataBase:
+    _instance = None
+    _lock = multiprocessing.Lock()
+
+    def __new__(cls):
+        with cls._lock:
+            if cls._instance is None:
+                cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        if not hasattr(self, 'initialized'):
+            self.state = ""
+            self.frames = []
+            self.utterances = []
+            self.initialized = True
 
 
-class Utterance(Base):
-    __tablename__ = "utterances"
-    id: int = Column(Integer, primary_key=True, index=True)
-    start: float = Column(Float, index=True)
-    end: float = Column(Float, index=True)
-    spoken_at: str = Column(String, index=True)
-    text: str = Column(String, index=True)
-    speaker: str = Column(String, index=True)
-    created_at: datetime = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
-
-    context_id: int = Column(Integer, ForeignKey("contexts.id"))
-    context: Mapped["Context"] = relationship("Context", back_populates="utterances")
+class Utterance:
+    def __init__(self, start: float, end: float, spoken_at: str, text: str, speaker: str):
+        self.start = start
+        self.end = end
+        self.spoken_at = spoken_at
+        self.text = text
+        self.speaker = speaker
 
 
-def create_utterance(db: Session, utterance: Utterance) -> Utterance:
-    db.add(utterance)
-    db.commit()
-    db.refresh(utterance)
-    current_context = db.get(Context, utterance.context_id)
-    current_context.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    return utterance
+db = None
 
 
-def create_frame(db: Session, frame: Frame) -> Frame:
-    db.add(frame)
-    db.commit()
-    db.refresh(frame)
-    current_context = db.get(Context, frame.context_id)
-    current_context.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    return frame
-
-
-def create_context(db: Session, context: Context) -> Context:
-    db.add(context)
-    db.commit()
-    db.refresh(context)
-    print(context.created_at)
-    return context
-
-
-def get_active_context(db: Session) -> Context:
-    # latest context
-    return db.query(Context).order_by(Context.id.desc()).first()
-
-
-class Database:
-    def __init__(self, url: str = "sqlite:///test.db"):
-        engine = create_engine(
-            url,
-            pool_size=50,
-            max_overflow=100,
-            echo=False,
-            pool_timeout=30,
-            pool_recycle=1800
-        )
-        Base.metadata.create_all(engine)
-        session_factory = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-        self._session_local = scoped_session(session_factory)
-        self._db = None
-
-    def get_session(self):
-        self._db = self._session_local()
-        return self._db
-
-    def __del__(self):
-        if self._db:
-            self._db.close()
-        self._db = None
-        self._session_local.remove()
-
-    def __enter__(self):
-        return self.get_session()
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.__del__()
-
-
-def main():
-    with Database() as db:
-        context = Context()
-        frame = Frame(frame=1, context=context)
-        utterance = Utterance(start=0, end=1, spoken_at="2021-01-01", text="Hello", speaker="Alice", context=context)
-        create_context(db, context)
-        create_frame(db, frame)
-        create_utterance(db, utterance)
+def get_db():
+    global db
+    if db is None:
+        db = DataBase()
+    return db
 
 
 if __name__ == "__main__":
-    main()
+    get_db()

@@ -28,14 +28,16 @@ def send_vibe(sid, data):
         sio.sleep(1)
 
     while True:
+        print("\t GETTING")
         (vi, prompt, perc) = q.get()
-        print(f'sending vibe {vi}:{prompt}:{perc}')
-        sio.sleep(1)
+        print(f'SENDING VIBE {vi}:{prompt}:{perc}')
         sio.emit('vibes', {
             "vibes": vi,
             "prompt": prompt,
             "vibesPercent": int(perc),
         }, room=sid)
+        print("\t SENT")
+        sio.sleep(1)
 
 
 @sio.event
