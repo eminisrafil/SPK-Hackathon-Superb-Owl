@@ -13,6 +13,7 @@ import aiohttp
 from aiohttp import FormData
 import boto3
 from PIL import Image, ImageOps
+from pydantic import BaseModel, RootModel
 
 from ...core.config import Configuration
 
@@ -28,7 +29,18 @@ logger = logging.getLogger(__name__)
 
 TESTING_MODE = False
 
-async def identify_person(config: Configuration, images: List[bytes]):
+class PersonResult(BaseModel):
+    guid: str
+    score: int
+    group: int
+    base64: str
+    url: str
+    index: int
+
+class PersonResults(RootModel):
+    root: List[PersonResult]
+
+async def identify_person(config: Configuration, images: List[bytes]) -> List[PersonResult]:
     site = 'https://facecheck.id'
     headers = {
         'Accept': 'application/json',
@@ -61,14 +73,17 @@ async def identify_person(config: Configuration, images: List[bytes]):
                         response_data = await response.json()
 
                         if response_data.get('output'):
-                            return response_data['output']['items']
+                            try:
+                                return PersonResults.model_validate(obj=response_data["output"]["items"]).root
+                            except:
+                                return []
                         
                         print(f"{response_data['message']} progress: {response_data['progress']}%")
                         await asyncio.sleep(1)
 
         except Exception as e:
             logger.error(f"Person identification: {e}")
-            return None
+            return []
         
 
 ####################################################################################################
@@ -129,7 +144,7 @@ class FaceService:
     #     self._html_fp.write("\n</body>\n</html>")
     #     self._html_fp.close()
     
-    async def detect_faces(self, image_bytes: bytes) -> List[str]:
+    async def detect_faces(self, image_bytes: bytes) -> List[PersonResult]:
         # Pre-process image
         image = Image.open(io.BytesIO(image_bytes))
         rotated_image = image.rotate(90, expand=True)
@@ -161,29 +176,18 @@ class FaceService:
         # self._file_idx += 1
 
         # Detect face and index if needed
-        detected_face_ids = []
         try:
-            # Search for the face in the collection
-            response = self._client.search_faces_by_image(
-                CollectionId=self._collection_id,
-                Image={'Bytes': image_bytes},
-                FaceMatchThreshold=80,
-                MaxFaces=1
-            )
-            face_matches = response.get('FaceMatches', [])
-            if face_matches:
-                # A known face was detected
-                # Base64 encode the image bytes
-                image_bytes_base64 = base64.b64encode(image_bytes).decode('utf-8')
-                # Constructing the message
-                message = {
-                    "faceId": face_matches[0]['Face']['FaceId'],  # Assuming you want the first match's face ID
-                    "imageBytes": image_bytes_base64
-                }
-                # Emit the message
+            face_id = self._identify_face(image_bytes = image_bytes)
+
+            # If found, send update
+            if face_id is not None:
+                # image_bytes_base64 = base64.b64encode(image_bytes).decode('utf-8')
+                # message = {
+                #     "faceId": face_id,  # Assuming you want the first match's face ID
+                #     "imageBytes": image_bytes_base64
+                # }
                 #await app_state.notification_service.emit_message(user.id, "known_face", message)
-                logger.info(f"KNOWN FACE DETECTED {message['faceId']}")
-                detected_face_ids.append(message["faceId"])
+                logger.info(f"KNOWN FACE DETECTED {face_id}")
             else:
                 # No known faces, let's index this new face
                 index_response = self._client.index_faces(
@@ -194,17 +198,15 @@ class FaceService:
                     QualityFilter="AUTO",
                     DetectionAttributes=['ALL']
                 )
-                detected_face_ids.append(index_response["FaceRecords"][0]["Face"]["FaceId"])
+                face_id = index_response["FaceRecords"][0]["Face"]["FaceId"]
         except self._client.exceptions.ClientError as e:
             if e.response['Error']['Code'] == "InvalidParameterException" and "no faces in the image" in e.response["Error"]["Message"]:
                 pass
             else:
                 logger.error(f"Error with AWS Rekognition: {e}")
 
-        # At this point, detected_face_ids[0] holds our face, if it exists
-        if len(detected_face_ids) > 0:
-            face_id = detected_face_ids[0]
-
+        # Handle face
+        if face_id is not None:
             # Store sample and if we reach the max, send for identification
             face_samples = self._face_samples_by_uuid[face_id]
             if face_samples.num_samples() < self._max_samples_per_face:
@@ -212,11 +214,56 @@ class FaceService:
                 if face_samples.num_samples() == self._max_samples_per_face:
                     # Got sufficient samples, ready to ID
                     logger.info(f"SEARCHING PERSON {face_id}")
-                    results = await identify_person(config=self._config, images=face_samples.images)
-                    print(results)
+                    person_results = await self._identify_person(target_face_id=face_id, images=face_samples.images)
+                    print(person_results)
+                    return person_results
 
-        return detected_face_ids
+        return []
     
+    async def _identify_person(self, target_face_id: str, images: List[bytes]) -> List[PersonResult]:
+        """
+        Attempts to identify a person given a list of images of the same person. Returns zero or
+        more person results from FaceCheck.
+        """
+        results = await identify_person(config=self._config, images=images)
+
+        # Check each person against our Amazon database to see whether it is the intended target
+        validated_results = []
+        for person_result in results:
+            # Get base64 data and convert to bytes. Base64 data is encoded as e.g.:
+            # data:image/webp;base64, <data>
+            parts = person_result.base64.split(" ")
+            if len(parts) != 2:
+                continue
+            image_base64 = parts[1]
+            image_bytes = base64.b64decode(image_base64)
+
+            # Try to look up face in AWS (to validate that the person result from FaceCheck is the
+            # same person we sent)
+            face_id = self._identify_face(image_bytes=image_bytes)
+            if face_id == target_face_id:
+                validated_results.append(person_result)
+            
+        return validated_results
+
+    def _identify_face(self, image_bytes: bytes) -> str | None:
+        """
+        Identify a face. If this is a known face, its ID (a UUID) is returned. This identifies faces
+        belonging to the same person but does not establish that person's real-world identity.
+        """
+        # Search for the face in the collection
+        response = self._client.search_faces_by_image(
+            CollectionId=self._collection_id,
+            Image={'Bytes': image_bytes},
+            FaceMatchThreshold=80,
+            MaxFaces=1
+        )
+        face_matches = response.get('FaceMatches', [])
+        if face_matches:
+            # A known face was detected
+            return face_matches[0]['Face']['FaceId']
+        return None
+
     def _detect_largest_face(self, image: Image.Image) -> Tuple[Image.Image | None, FaceMetrics | None]:
         try:
             response = self._client.detect_faces(
@@ -241,7 +288,7 @@ class FaceService:
             y1 = max(0, bbox["Top"] * image_height - vertical_pad)
             y2 = min(image_height, y1 + bbox["Height"] * image_height + vertical_pad)
             cropped = image.crop((x1, y1, x2, y2))
-            cropped.save("cropped.jpg")
+            #cropped.save("cropped.jpg")
 
             # Get metrics
             face_metrics = FaceMetrics(
