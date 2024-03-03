@@ -1,7 +1,9 @@
 import base64
+from dataclasses import dataclass
 import io
 import logging
-from typing import List
+import os
+from typing import List, Tuple
 import uuid
 
 import boto3
@@ -11,6 +13,17 @@ from ...core.config import AWSConfiguration
 
 logger = logging.getLogger(__name__)
 
+
+@dataclass
+class FaceMetrics:
+    area: float
+    eyes_open: bool
+    eyes_open_confidence: float
+    face_occluded: bool
+    face_occluded_confidence: float
+    yaw: float
+    brightness: float
+    sharpness: float
 
 class FaceService:
     def __init__(self, config: AWSConfiguration):
@@ -22,6 +35,15 @@ class FaceService:
         )
         self._collection_id = config.rekognition_collection_id
         self._create_collection_if_not_exists()
+
+        os.makedirs("face_images", exist_ok=True)
+        self._file_idx = 0
+        self._html_fp = open("face_images/images.html", "w")
+        self._html_fp.write("<html>\n<body>\n")
+
+    def __del__(self):
+        self._html_fp.write("\n</body>\n</html>")
+        self._html_fp.close()
     
     def detect_faces(self, image_bytes: bytes) -> List[str]:
         # Pre-process image
@@ -30,10 +52,22 @@ class FaceService:
         mirrored_image = ImageOps.mirror(rotated_image)  # This line mirrors the image horizontally
         
         # Detect largest face in image, if any
-        image_bytes = self._detect_largest_face(image=mirrored_image)
+        image_bytes, metrics = self._detect_largest_face(image=mirrored_image)
         if image_bytes is None:
             return []
+
+        # Thresholds to reject poorly visible faces
+        good = metrics.area >= 0.0188 and abs(metrics.yaw) <= 40 and metrics.brightness >= 45
+        if not good:
+            return []
         
+        out_filename = f"face_images/{self._file_idx}.jpg"
+        with open(out_filename, "wb") as fp:
+            fp.write(image_bytes)
+            self._html_fp.write(f"<img src='{self._file_idx}.jpg'>\n")
+            self._html_fp.write(f"<p>{metrics}</p>\n")
+        self._file_idx += 1
+
         # Index face and determine whether seen before
         detected_face_ids = []
         try:
@@ -78,7 +112,7 @@ class FaceService:
                 logger.error(f"Error with AWS Rekognition: {e}")
         return detected_face_ids
     
-    def _detect_largest_face(self, image: Image) -> bytes | None:
+    def _detect_largest_face(self, image: Image) -> Tuple[bytes | None, FaceMetrics | None]:
         try:
             response = self._client.detect_faces(
                 Image={ 'Bytes': self._get_image_bytes(image=image)  },
@@ -89,8 +123,9 @@ class FaceService:
             face_details = response["FaceDetails"]
             face_details_descending_size = sorted(face_details, reverse=True, key=lambda face_detail: face_detail["BoundingBox"]["Height"] * face_detail["BoundingBox"]["Width"])
             if len(face_details_descending_size) <= 0:
-                return None
-            bbox = face_details_descending_size[0]["BoundingBox"]
+                return None, None
+            face = face_details_descending_size[0]
+            bbox = face["BoundingBox"]
 
             # Crop out the largest image
             image_width, image_height = image.size
@@ -101,7 +136,19 @@ class FaceService:
             cropped = image.crop((x1, y1, x2, y2))
             #cropped.save("cropped.jpg")
 
-            return self._get_image_bytes(image=cropped)
+            # Get metrics
+            face_metrics = FaceMetrics(
+                area=bbox["Width"] * bbox["Height"],
+                eyes_open=face["EyesOpen"]["Value"],
+                eyes_open_confidence=face["EyesOpen"]["Confidence"],
+                face_occluded=face["FaceOccluded"]["Value"],
+                face_occluded_confidence=face["FaceOccluded"]["Confidence"],
+                yaw=face["Pose"]["Yaw"],
+                brightness=face["Quality"]["Brightness"],
+                sharpness=face["Quality"]["Sharpness"]
+            )
+
+            return self._get_image_bytes(image=cropped), face_metrics
 
         except self.client.exceptions.ClientError as e:
             logger.error(f"Error with AWS Rekognition face detection: {e}")
