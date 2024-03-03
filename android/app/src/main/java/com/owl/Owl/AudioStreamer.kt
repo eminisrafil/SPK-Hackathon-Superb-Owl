@@ -88,68 +88,6 @@ class AudioStreamer(private val context: Context, private val captureUUID: Strin
                     }
                     LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
                 }
-
-
-//                val args: Map<String, Any> = args
-//
-//// Updated check for a Map structure
-//                if (args.isNotEmpty() && args[0] is Map<*, *>) {
-//                    val argsMap = args[0] as Map<String, Any>
-//                    // Now you can proceed with your existing check
-//                    if (args.containsKey("vibes") && args["vibes"] is Int &&
-//                        args.containsKey("prompt") && args["prompt"] is String &&
-//                        args.containsKey("vibesPercent") && args["vibesPercent"] is Int) {
-//                        // Successfully passed the check, now you can safely use these values
-//                        val vibrations = args["vibes"] as Int
-//                        val prompt = args["prompt"] as String
-//                        val vibesPercent = args["vibesPercent"] as Int
-//
-//                        val intent = Intent(VIBES_EVENT).apply {
-//                            putExtra(VIBRATIONS_KEY, vibrations)
-//                            putExtra(PROMPT_KEY, prompt)
-//                            putExtra(VIBES_PERCENT_KEY, vibesPercent) // Adding the vibesPercent to the intent
-//                        }
-//                        LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
-//                    }
-//                }
-
-
-//                if (args.size >= 3 && args[0] is Int && args[1] is String && args[2] is Int) {
-//                    val vibrations = args[0] as Int
-//                    val prompt = args[1] as String
-//                    val vibesPercent = args[2] as Int // Extracting the vibesPercent value
-//
-//                    val intent = Intent(VIBES_EVENT).apply {
-//                        putExtra(VIBRATIONS_KEY, vibrations)
-//                        putExtra(PROMPT_KEY, prompt)
-//                        putExtra(VIBES_PERCENT_KEY, vibesPercent) // Adding the vibesPercent to the intent
-//                    }
-//                    LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
-//                }
-
-//                if (args.containsKey("vibes") && args.containsKey("prompt") && args.containsKey("vibesPercent")) {
-//                    val vibrations = args["vibes"] as? Int ?: 0 // Providing a default value if null or not an Int
-//                    val prompt = args["prompt"] as? String ?: "" // Providing a default value if null or not a String
-//                    val vibesPercent = args["vibesPercent"] as? Int ?: 0 // Providing a default value if null or not an Int
-//
-//                    val intent = Intent(VIBES_EVENT).apply {
-//                        putExtra(VIBRATIONS_KEY, vibrations)
-//                        putExtra(PROMPT_KEY, prompt)
-//                        putExtra(VIBES_PERCENT_KEY, vibesPercent)
-//                    }
-//                    LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
-//                }
-
-
-//                if (args.size >= 2 && args[0] is Int && args[1] is String) {
-//                    val vibrations = args[0] as Int
-//                    val prompt = args[1] as String
-//                    val intent = Intent(VIBES_EVENT).apply {
-//                        putExtra(VIBRATIONS_KEY, vibrations)
-//                        putExtra(PROMPT_KEY, prompt)
-//                    }
-//                    LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
-//                }
             }
             socket?.connect()
         } catch (e: Exception) {

@@ -89,6 +89,7 @@ class MainActivity : AppCompatActivity() {
     private val captureUUID: String = UUID.randomUUID().toString().replace("-", "")
 
     private lateinit var emojiTextView: TextView
+    private lateinit var promptTextView: TextView
     private val emojis = arrayOf("😀", "😁", "😂", "🤣", "😃", "😄", "😅", "😆", "😉", "😊") // Define your set of emojis here
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var lottieAnimationView: LottieAnimationView
@@ -108,10 +109,12 @@ class MainActivity : AppCompatActivity() {
         requestPermissions()
 
         emojiTextView = findViewById(R.id.mytext) // Make sure this ID matches your TextView's ID in the layout
+        promptTextView = findViewById(R.id.myprompt)
         startUpdatingEmojis()
 
         lottieAnimationView = findViewById(R.id.lottieAnimationView)
         startLottieAnimation()
+        //pauseLottieAnimation()
 
         startPeriodicBroadcast()
 
@@ -146,8 +149,9 @@ class MainActivity : AppCompatActivity() {
                 val positivity = intent.getIntExtra(AudioStreamer.VIBES_PERCENT_KEY, 50) // Default to a neutral value if not provided
                 //updateEmojiLabel(prompt)
                 updateEmojiLabel(positivity.toString()) // Change here
+                updatePromptLabel(prompt)
                 vibrateDevice(vibrations)
-                //playAppropriateLottieAnimation(positivity)
+                playAppropriateLottieAnimation(positivity)
             }
         }
 
@@ -155,7 +159,7 @@ class MainActivity : AppCompatActivity() {
             when {
                 positivity < 40 -> lottieAnimationView.setAnimation("RedVibe.json")
                 positivity <= 60 -> lottieAnimationView.setAnimation("ChillVibe.json")
-                positivity > 60 -> lottieAnimationView.setAnimation("testLottie.json")
+                positivity > 75 -> lottieAnimationView.setAnimation("testLottie2.json")
             }
             lottieAnimationView.playAnimation()
         }
@@ -193,8 +197,13 @@ class MainActivity : AppCompatActivity() {
         emojiTextView.text = text
     }
 
+    private fun updatePromptLabel(text: String) {
+        promptTextView.text = text
+    }
+
+
     private fun startLottieAnimation() {
-        lottieAnimationView.playAnimation()
+       lottieAnimationView.playAnimation()
     }
 
     private fun pauseLottieAnimation() {

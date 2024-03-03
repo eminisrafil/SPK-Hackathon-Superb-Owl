@@ -12,7 +12,8 @@
         android:id="@+id/lottieAnimationView"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        app:lottie_fileName="testLottie2.json"
+        android:layout_centerInParent="true"
+        app:lottie_fileName="ChillVibe.json"
         app:lottie_autoPlay="true"
         app:lottie_loop="true"/>
 
@@ -34,6 +35,17 @@
         android:rotation="0"
         android:textSize="36sp"
         android:layout_centerInParent="true"
+        android:textColor="#FFFFFF"/>
+
+    <TextView
+        android:id="@+id/myprompt"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="prompt"
+        android:textSize="40sp"
+        android:layout_below="@id/mytext"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="20dp"
         android:textColor="#FFFFFF"/>
 
 
