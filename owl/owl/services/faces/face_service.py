@@ -24,33 +24,7 @@ from ...core.config import Configuration
 
 logger = logging.getLogger(__name__)
 
-async def scrape(urls):
-    async with aiohttp.ClientSession() as session:
-        tasks = [fetch_url_data(session, url) for url in urls]
-        results = await asyncio.gather(*tasks)
-        return results
-    
-async def fetch_url_data(session, url):
-    try:
-        async with session.get(url) as response:
-            response.raise_for_status()
-            html = await response.text()
-            soup = BeautifulSoup(html, 'html.parser')
-            
-            # Basic metadata
-            title = soup.find('title').text if soup.find('title') else 'No title found'
-            meta_desc = soup.find('meta', attrs={'name': 'description'})['content'] if soup.find('meta', attrs={'name': 'description'}) else 'No description found'
-            
-            meaningful_tags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li']
-            texts = []
-            for tag in meaningful_tags:
-                texts.extend([elem.text.strip() for elem in soup.find_all(tag)])
-            
-            text = ' '.join(texts)
-            return {'url': url, 'title': title, 'meta_desc': meta_desc, 'text': text}
-    except Exception as e:
-        print(f'Error fetching {url}: {e}')
-        return {'url': url, 'error': str(e)}
+
 
 ####################################################################################################
 # Person Identification
@@ -90,7 +64,8 @@ async def identify_person(config: Configuration, images: List[bytes]) -> List[Pe
 
                 id_search = response_data['id_search']
                 print(f"{response_data['message']} id_search={id_search}")
-
+                if not id_search:
+                    return []
                 json_data = {
                     'id_search': id_search,
                     'with_progress': True,
@@ -177,7 +152,37 @@ class FaceService:
     # def __del__(self):
     #     self._html_fp.write("\n</body>\n</html>")
     #     self._html_fp.close()
+    async def scrape(self, urls):
+        async with aiohttp.ClientSession() as session:
+            tasks = [self.fetch_url_data(session, url) for url in urls]
+            results = await asyncio.gather(*tasks)
+            return results
     
+    async def fetch_url_data(self, session, url):
+        try:
+            # Adjust the API URL with your parameters
+            api_url = "https://app.scrapingbee.com/api/v1/"
+            params = {
+                "render_js": "false",
+                "extract_rules": "{\"text\": \"body\"}",
+                "url": url,
+                "api_key": self._config.scraping_bee.api_key
+            }
+
+            async with session.get(api_url, params=params) as response:
+                response.raise_for_status()
+                data = await response.json() 
+                
+                text = data.get('text', '')  
+                
+                return {
+                    'url': url,
+                    'text': text
+                }
+        except Exception as e:
+            print(f'Error fetching {url}: {e}')
+            return {'url': url, 'error': str(e)}
+        
     async def detect_faces(self, image_bytes: bytes) -> List[PersonResult]:
         # Pre-process image
         image = Image.open(io.BytesIO(image_bytes))
@@ -197,9 +202,10 @@ class FaceService:
             image_bytes = self._get_image_bytes(image=upscaled_image)
 
         # Thresholds to reject poorly visible faces
-        good = metrics.area >= 0.0188 and abs(metrics.yaw) <= 40 and metrics.brightness >= 45
+        good = metrics.area >= 0.0077 and abs(metrics.yaw) <= 40 and metrics.brightness >= 45
         if not good:
-            return []
+            logger.error(f"Failed: {metrics}")
+           #  return []
         
         # Generate an HTML file
         # out_filename = f"face_images/{self._file_idx}.jpg"
@@ -251,7 +257,7 @@ class FaceService:
                     person_results = await self._identify_person(target_face_id=face_id, images=face_samples.images)
                     if person_results:
                         urls_to_fetch = [item.url for item in person_results]
-                        urls_data = await scrape(urls_to_fetch)
+                        urls_data = await self.scrape(urls_to_fetch)
                         formatted_urls_data = json.dumps(urls_data, ensure_ascii=False, indent=2)
                         tools = [{
                             "type": "function",
@@ -265,15 +271,21 @@ class FaceService:
                                             "type": "string",
                                             "description": "Full Name of the person of most likely target person.",
                                         },
+                                        "description": {
+                                            "type": "string",
+                                            "description": "Description of the person of most likely target person. keep it short in highlighting the most important features of the person.",
+                                        },
+
                                     },
-                                    "required": ["name"],
+                                    "required": ["name", "description"],
                                 },
                             },
                         }]
                         llm_result = await self._llm_service.async_llm_completion(
                             tools=tools,
+                            #tool_choice={"name": "person_prediction"},
                             messages=[
-                                {"content": f"You are the world's most advanced person identifier. you take results from a web search and try and identify the most likely individual given that some result may be irrelevant. this is a person your client met while at a hackathon in san Francisco. you must help him find the person because it's important for human flourishing.", "role": "system"},
+                                {"content": f"You are the world's most advanced person identifier. we have a set of webpages. some may contain our target or some may be irrelevant. you take results from a web search and try and identify the most likely individual given that some result may be irrelevant based on that we are in a tich event in san Francisco. this is a person your client met while at a hackathon in san Francisco. you must help him find the person because it's important for human flourishing.", "role": "system"},
                                 {"content": f"Web data: {formatted_urls_data}", "role": "user"}
                             ])
                         print(llm_result)
@@ -281,6 +293,7 @@ class FaceService:
                             "faceId": llm_result.choices[0].message['tool_calls'][0].function.arguments,
                         }
                         # Emit the message
+
                         await self._notification_service.emit_message("known_face", message)
                     print(person_results)
 
@@ -291,6 +304,11 @@ class FaceService:
         Attempts to identify a person given a list of images of the same person. Returns zero or
         more person results from FaceCheck.
         """
+
+        for i, image_bytes in enumerate(images):
+                    with open(f"submitted_{target_face_id}_{i}.webp", mode="wb") as fp:
+                        fp.write(image_bytes)
+
         results = await identify_person(config=self._config, images=images)
 
         # Check each person against our Amazon database to see whether it is the intended target
@@ -310,13 +328,13 @@ class FaceService:
 
             # Try to look up face in AWS (to validate that the person result from FaceCheck is the
             # same person we sent)
-            face_id = self._identify_face(image_bytes=image_bytes)
+            face_id = self._identify_face(image_bytes=image_bytes, face_match_threshold=80)
             if face_id == target_face_id:
                 validated_results.append(person_result)
             
         return validated_results
 
-    def _identify_face(self, image_bytes: bytes) -> str | None:
+    def _identify_face(self, image_bytes: bytes, face_match_threshold: int = 80) -> str | None:
         """
         Identify a face. If this is a known face, its ID (a UUID) is returned. This identifies faces
         belonging to the same person but does not establish that person's real-world identity.
@@ -325,7 +343,7 @@ class FaceService:
         response = self._client.search_faces_by_image(
             CollectionId=self._collection_id,
             Image={'Bytes': image_bytes},
-            FaceMatchThreshold=80,
+            FaceMatchThreshold=face_match_threshold,
             MaxFaces=1
         )
         face_matches = response.get('FaceMatches', [])
