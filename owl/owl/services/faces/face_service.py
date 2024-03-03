@@ -18,6 +18,7 @@ from PIL import Image, ImageOps
 from bs4 import BeautifulSoup
 import json
 from pydantic import BaseModel, RootModel
+import numpy as np
 
 from ...core.config import Configuration
 
@@ -144,14 +145,15 @@ class FaceService:
         self._collection_id = config.aws.rekognition_collection_id
         self._create_collection_if_not_exists()
 
-    #     os.makedirs("face_images", exist_ok=True)
-    #     self._file_idx = 0
-    #     self._html_fp = open("face_images/images.html", "w")
-    #     self._html_fp.write("<html>\n<body>\n")
+        os.makedirs("face_images", exist_ok=True)
+        self._file_idx = 0
+        self._html_fp = open("face_images/images.html", "w")
+        self._html_fp.write("<html>\n<body>\n")
 
-    # def __del__(self):
-    #     self._html_fp.write("\n</body>\n</html>")
-    #     self._html_fp.close()
+    def __del__(self):
+        self._html_fp.write("\n</body>\n</html>")
+        self._html_fp.close()
+
     async def scrape(self, urls):
         async with aiohttp.ClientSession() as session:
             tasks = [self.fetch_url_data(session, url) for url in urls]
@@ -201,21 +203,22 @@ class FaceService:
             upscaled_image = upscaled_image.resize((upscaled_image.size[0] * 2, upscaled_image.size[1] * 2))
             image_bytes = self._get_image_bytes(image=upscaled_image)
 
+        # Generate an HTML file
+        out_filename = f"face_images/{self._file_idx}.jpg"
+        with open(out_filename, "wb") as fp:
+            fp.write(image_bytes)
+            self._html_fp.write(f"<img src='{self._file_idx}.jpg'>\n")
+            self._html_fp.write(f"<p>{metrics}</p>\n")
+        self._file_idx += 1
+
         # Thresholds to reject poorly visible faces
-        good = metrics.area >= 0.0077 and abs(metrics.yaw) <= 40 and metrics.brightness >= 45
+        good = metrics.area >= 0.0077 and abs(metrics.yaw) <= 40 and metrics.brightness >= 35 and metrics.eyes_open and metrics.cv_sharpness >= 35
         if not good:
             logger.error(f"Failed: {metrics}")
-           #  return []
-        
-        # Generate an HTML file
-        # out_filename = f"face_images/{self._file_idx}.jpg"
-        # with open(out_filename, "wb") as fp:
-        #     fp.write(image_bytes)
-        #     self._html_fp.write(f"<img src='{self._file_idx}.jpg'>\n")
-        #     self._html_fp.write(f"<p>{metrics}</p>\n")
-        # self._file_idx += 1
+            return []
 
         # Detect face and index if needed
+        face_id = None
         try:
             face_id = self._identify_face(image_bytes = image_bytes)
 
@@ -397,7 +400,7 @@ class FaceService:
 
             return cropped, face_metrics
 
-        except self.client.exceptions.ClientError as e:
+        except self._client.exceptions.ClientError as e:
             logger.error(f"Error with AWS Rekognition face detection: {e}")
 
         return None
