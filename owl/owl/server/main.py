@@ -85,7 +85,7 @@ def create_server_app(config: Configuration) -> FastAPI:
     capture_service = CaptureService(config=config, database=database)
     bing_search_service = BingSearchService(config=config.bing) if config.bing else None
     conversation_service = ConversationService(config, database, transcription_service, notification_service, bing_search_service)
-    face_service = FaceService(config=config.aws)
+    face_service = FaceService(config=config)
 
     # Create server app
     app = FastAPI()

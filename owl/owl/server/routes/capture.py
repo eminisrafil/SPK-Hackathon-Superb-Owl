@@ -56,7 +56,7 @@ class ProcessFacesTask(Task):
         self._image_bytes = image_bytes
 
     async def run(self, app_state: AppState):
-        self._face_service.detect_faces(image_bytes=self._image_bytes)
+        await self._face_service.detect_faces(image_bytes=self._image_bytes)
 
 @router.post("/capture/image")
 async def upload_image(

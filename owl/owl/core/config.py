@@ -10,6 +10,9 @@ class AWSConfiguration(BaseModel):
     secret_access_key: str
     rekognition_collection_id: str
 
+class FaceCheckConfiguration(BaseModel):
+    api_key: str | None
+
 class LLMConfiguration(BaseModel):
     model: str
     api_base_url: str | None
@@ -99,6 +102,7 @@ class Configuration(BaseModel):
 
     llm: LLMConfiguration
     aws: AWSConfiguration
+    face_check: FaceCheckConfiguration
     captures: CapturesConfiguration
     vad: VADConfiguration
     deepgram: DeepgramConfiguration
