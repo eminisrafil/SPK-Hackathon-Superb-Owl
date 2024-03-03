@@ -274,7 +274,7 @@ class FaceService:
                             ])
                         print(llm_result)
                         message = {
-                            "faceId": 'guy',
+                            "faceId": llm_result.choices[0].message['tool_calls'][0].function.arguments,
                         }
                         # Emit the message
                         await self._notification_service.emit_message("known_face", message)
