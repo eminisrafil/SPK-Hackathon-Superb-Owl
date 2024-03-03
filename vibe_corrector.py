@@ -1,15 +1,15 @@
 import csv
 import enum
-import json
-import pickle
 import threading
 import time
 
 import eventlet
 from scipy.spatial.distance import cosine
 
+from client_db import fetch_and_process, Utterance
 from manuel import server
-from manuel.config import VIBE_SMOOTHING_FACTOR, VIBE_PERCENTAGE_THRESHOLD, MODEL_NAME, BEST_MODEL_NAME, COSINE_THRESHOLD
+from manuel.config import VIBE_SMOOTHING_FACTOR, VIBE_PERCENTAGE_THRESHOLD, MODEL_NAME, BEST_MODEL_NAME, \
+    COSINE_THRESHOLD
 from manuel.query_gpt import query_gpt, fetch_embeddings
 
 """
@@ -91,7 +91,8 @@ class VibeCorrector:
     def vibe_check(self, text_so_far):
         current_vibes = eval_vibes(text_so_far)
         print(f"Vibe level: {current_vibes} Text so far: `{text_so_far}`")
-        running_vibe_level = VIBE_SMOOTHING_FACTOR * self.running_vibe_level + (1 - VIBE_SMOOTHING_FACTOR) * current_vibes
+        running_vibe_level = VIBE_SMOOTHING_FACTOR * self.running_vibe_level + (
+                1 - VIBE_SMOOTHING_FACTOR) * current_vibes
 
         should_vibe_correct = running_vibe_level + VIBE_PERCENTAGE_THRESHOLD < self.user_vibe_target
         if len(text_so_far.split(" ")) < 5:
@@ -104,7 +105,8 @@ class VibeCorrector:
             should_vibe_correct, self.running_vibe_level = self.vibe_check(text_so_far)
             if should_vibe_correct:
                 self.state = State.VIBE_CORRECTING
-                print(f"Vibe level: {self.running_vibe_level} is not close enough to {self.user_vibe_target} to vibe. Correcting...")
+                print(
+                    f"Vibe level: {self.running_vibe_level} is not close enough to {self.user_vibe_target} to vibe. Correcting...")
             else:
                 print(f"Vibing at {self.running_vibe_level}")
         if self.state == State.VIBE_CORRECTING:
@@ -185,7 +187,7 @@ Suggested interjection message:
 
 def get_profile():
     tweets = []
-    with open('/home/user/Downloads/TwExportly_EthanSutin_tweets_2024_03_02.csv', newline='') as f:
+    with open('TwExportly_EthanSutin_tweets_2024_03_02.csv', newline='') as f:
         reader = csv.reader(f)
         header = next(reader)
         for row in reader:
@@ -204,26 +206,16 @@ def get_corrector():
 
 
 def get_cum_seq():
-    with open('/home/user/Downloads/conversation_tracker.pkl', 'rb') as f:
-        alternative = pickle.load(f)
-        data, = alternative.values()
-        sequence_of_words = []
-        for row in data:
-            out = json.loads(row)
-            # sequence_of_words.append(out['text'])
-            sequence_of_words.extend(out['text'].split())
-    cum_seq = [" ".join(sequence_of_words[:i]) for i in range(1, len(sequence_of_words) + 1)]
-    return cum_seq
+    return fetch_and_process(Utterance)
 
 
 def offline_replay():
     server.set_queue(out_queue)
     threading.Thread(target=server.run_server).start()
 
+    vibe_corrector = get_corrector()
     while True:
-        vibe_corrector = get_corrector()
-        cum_seq = get_cum_seq()
-        for text_so_far in cum_seq:
+        for text_so_far in get_cum_seq():
             steering_prompt = vibe_corrector.step_state_machine(text_so_far)
             if steering_prompt:
                 out_queue.put_nowait((VIBRATION.ONCE, steering_prompt, vibe_corrector.running_vibe_level))

@@ -1,52 +1,64 @@
+import asyncio
 import json
-import multiprocessing
+import logging
 
 import socketio
 
-from client_db import get_db, Utterance
+from client_db import Database, Context, create_context, create_utterance, Utterance
 
-sio = socketio.Client()
+logging.basicConfig()
+logging.getLogger('sqlalchemy.engine').setLevel(logging.DEBUG)
 
+db = Database().get_session()
+active_context = None
 
-# The main function where the connection is established
-def run():
-    print("running")
-    sio.connect('http://127.0.0.1:8000/socket.io', headers={"Authorization": "bearer 6a99985acd0440729b468c1cecd37096"})
-    print("connected")
-    sio.wait()
-    print("waited")
+# Create an instance of the Async Socket.IO Client
+sio = socketio.AsyncClient()
 
 
-def start_client_thread():
-    import threading
-    p = threading.Thread(target=run, args=())
-    p.start()
-    return p
+# Event handler for when the client connects to the server
+@sio.event
+async def connect():
+    global active_context
+    print('Connected to the server.')
+    context = Context()
+    active_context = create_context(db, context)
+
+
+# Event handler for when the client disconnects from the server
+@sio.event
+async def disconnect():
+    del db
 
 
 @sio.on("new_utterance")
-def on_new_utterance(msg):
-    import pydevd_pycharm
-    pydevd_pycharm.settrace('localhost', port=12345, stdoutToServer=True, stderrToServer=True)
+async def on_new_utterance(msg):
+    if not msg:
+        return
+    utterance = json.loads(msg["utterance"])
+    utterance = Utterance(
+        context=active_context,
+        **utterance
+    )
+    create_utterance(db, utterance)
 
-    db = get_db()
-    print("XXXX-new_utterance", msg)
-    print("len utterances", len(db.utterances))
-    utterance_data = json.loads(msg["utterance"])
-    db.utterances.append(Utterance(**utterance_data))
-    print("len utterances", len(db.utterances))
+
+# @sio.on("new_human")
+# async def on_new_human(msg):
+#     human = json.loads(msg["human"])
+#     Human(
+#         context=active_context,
+#         **human
+#     )
+#     create_human(db, human)
 
 
-# @sio.on("*")
-# def on_any_event(event, *args, **kwargs):
-#     print("Received unhandled event:", event)
-#     print("Arguments:", args)
-#     print("Keyword arguments:", kwargs)
+# The main function where the connection is established
+async def run():
+    await sio.connect('http://127.0.0.1:8000/', headers={"Authorization": "bearer your_own_secret_token"})
+    await sio.wait()
+
 
 
 if __name__ == '__main__':
-    # p = multiprocessing.Process(target=run, args=())
-    # p.start()
-    p = start_client_thread()
-    print("printing db")
-    p.join()
+    asyncio.run(run())
