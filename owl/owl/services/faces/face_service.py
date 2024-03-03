@@ -8,17 +8,47 @@ import logging
 import os
 from typing import Dict, List, Tuple
 import uuid
+from ..llm.llm_service import LLMService
 
 import aiohttp
 from aiohttp import FormData
 import boto3
 from PIL import Image, ImageOps
+from bs4 import BeautifulSoup
+import json
 
 from ...core.config import Configuration
 
 
 logger = logging.getLogger(__name__)
 
+async def scrape(urls):
+    async with aiohttp.ClientSession() as session:
+        tasks = [fetch_url_data(session, url) for url in urls]
+        results = await asyncio.gather(*tasks)
+        return results
+    
+async def fetch_url_data(session, url):
+    try:
+        async with session.get(url) as response:
+            response.raise_for_status()
+            html = await response.text()
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            # Basic metadata
+            title = soup.find('title').text if soup.find('title') else 'No title found'
+            meta_desc = soup.find('meta', attrs={'name': 'description'})['content'] if soup.find('meta', attrs={'name': 'description'}) else 'No description found'
+            
+            meaningful_tags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li']
+            texts = []
+            for tag in meaningful_tags:
+                texts.extend([elem.text.strip() for elem in soup.find_all(tag)])
+            
+            text = ' '.join(texts)
+            return {'url': url, 'title': title, 'meta_desc': meta_desc, 'text': text}
+    except Exception as e:
+        print(f'Error fetching {url}: {e}')
+        return {'url': url, 'error': str(e)}
 
 ####################################################################################################
 # Person Identification
@@ -107,8 +137,10 @@ class FaceSamples:
         return datetime.now() - self.timestamps[0]
 
 class FaceService:
-    def __init__(self, config: Configuration):
+    def __init__(self, config: Configuration, notification_service):
         self._config = config
+        self._notification_service = notification_service
+        self._llm_service = LLMService(config.llm)
         self._max_samples_per_face = 3
         self._face_samples_by_uuid = defaultdict(FaceSamples)
         self._client = boto3.client(
@@ -213,6 +245,39 @@ class FaceService:
                     # Got sufficient samples, ready to ID
                     logger.info(f"SEARCHING PERSON {face_id}")
                     results = await identify_person(config=self._config, images=face_samples.images)
+                    if results:
+                        urls_to_fetch = [item['url'] for item in results[:5]]
+                        urls_data = await scrape(urls_to_fetch)
+                        formatted_urls_data = json.dumps(urls_data, ensure_ascii=False, indent=2)
+                        tools = [{
+                            "type": "function",
+                            "function": {
+                                "name": "person_prediction",
+                                "description": "Given a list of web data, predict the most likely person based on the content of the pages.",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "name": {
+                                            "type": "string",
+                                            "description": "Full Name of the person of most likely target person.",
+                                        },
+                                    },
+                                    "required": ["name"],
+                                },
+                            },
+                        }]
+                        llm_result = await self._llm_service.async_llm_completion(
+                            tools=tools,
+                            messages=[
+                                {"content": f"You are the world's most advanced person identifier. you take results from a web search and try and identify the most likely individual given that some result may be irrelevant. this is a person your client met while at a hackathon in san Francisco. you must help him find the person because it's important for human flourishing.", "role": "system"},
+                                {"content": f"Web data: {formatted_urls_data}", "role": "user"}
+                            ])
+                        print(llm_result)
+                        message = {
+                            "faceId": 'guy',
+                        }
+                        # Emit the message
+                        await self._notification_service.emit_message("known_face", message)
                     print(results)
 
         return detected_face_ids
