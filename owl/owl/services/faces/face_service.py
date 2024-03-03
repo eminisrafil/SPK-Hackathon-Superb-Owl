@@ -36,14 +36,14 @@ class FaceService:
         self._collection_id = config.rekognition_collection_id
         self._create_collection_if_not_exists()
 
-        os.makedirs("face_images", exist_ok=True)
-        self._file_idx = 0
-        self._html_fp = open("face_images/images.html", "w")
-        self._html_fp.write("<html>\n<body>\n")
+    #     os.makedirs("face_images", exist_ok=True)
+    #     self._file_idx = 0
+    #     self._html_fp = open("face_images/images.html", "w")
+    #     self._html_fp.write("<html>\n<body>\n")
 
-    def __del__(self):
-        self._html_fp.write("\n</body>\n</html>")
-        self._html_fp.close()
+    # def __del__(self):
+    #     self._html_fp.write("\n</body>\n</html>")
+    #     self._html_fp.close()
     
     def detect_faces(self, image_bytes: bytes) -> List[str]:
         # Pre-process image
@@ -61,12 +61,13 @@ class FaceService:
         if not good:
             return []
         
-        out_filename = f"face_images/{self._file_idx}.jpg"
-        with open(out_filename, "wb") as fp:
-            fp.write(image_bytes)
-            self._html_fp.write(f"<img src='{self._file_idx}.jpg'>\n")
-            self._html_fp.write(f"<p>{metrics}</p>\n")
-        self._file_idx += 1
+        # Generate an HTML file
+        # out_filename = f"face_images/{self._file_idx}.jpg"
+        # with open(out_filename, "wb") as fp:
+        #     fp.write(image_bytes)
+        #     self._html_fp.write(f"<img src='{self._file_idx}.jpg'>\n")
+        #     self._html_fp.write(f"<p>{metrics}</p>\n")
+        # self._file_idx += 1
 
         # Index face and determine whether seen before
         detected_face_ids = []

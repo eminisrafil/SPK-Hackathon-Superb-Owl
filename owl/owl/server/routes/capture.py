@@ -30,6 +30,7 @@ from ...models.schemas import Location, Capture, ConversationRead, Image
 from ..streaming_capture_handler import StreamingCaptureHandler
 from ...services import ConversationDetectionService
 from ...files.capture_directory import CaptureDirectory
+from ...services import FaceService
 
 
 
@@ -40,6 +41,22 @@ router = APIRouter()
 ####################################################################################################
 # Image API
 ####################################################################################################
+
+class ProcessFacesTask(Task):
+    """
+    Processes faces.
+    """
+
+    def __init__(
+        self,
+        face_service: FaceService,
+        image_bytes: bytes
+    ):
+        self._face_service = face_service
+        self._image_bytes = image_bytes
+
+    async def run(self, app_state: AppState):
+        self._face_service.detect_faces(image_bytes=self._image_bytes)
 
 @router.post("/capture/image")
 async def upload_image(
@@ -69,7 +86,11 @@ async def upload_image(
         conversation_id=conversation.id
     )
     create_image(db, image)
-    app_state.face_service.detect_faces(image_bytes=image_bytes)
+
+    # Face detection task
+    task = ProcessFacesTask(face_service=app_state.face_service, image_bytes=image_bytes)
+    app_state.task_queue.put(task)
+
     return JSONResponse(status_code=200, content={"message": f"File '{file.filename}' saved.'"})
 
 ####################################################################################################
