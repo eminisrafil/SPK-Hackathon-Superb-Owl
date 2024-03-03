@@ -11,8 +11,7 @@ from deepgram import (
     LiveOptions,
 )
 
-# Your Deepgram API key
-DEEPGRAM_API_KEY = 'b1fd9c45ab6a90f205b2cd887701c854f305ff2c'
+from manuel.config import DEEPGRAM_API_KEY
 
 # URL for the realtime streaming audio you would like to transcribe
 URL = 'http://stream.live.vc.bbcmedia.co.uk/bbc_world_service'

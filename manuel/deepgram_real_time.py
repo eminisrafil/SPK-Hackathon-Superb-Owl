@@ -5,9 +5,8 @@ import json
 import pyaudio
 import websockets
 
+from manuel.config import DEEPGRAM_API_KEY
 from vibe_corrector import VibeCorrector
-
-DEEPGRAM_API_KEY = 'b1fd9c45ab6a90f205b2cd887701c854f305ff2c'
 
 FORMAT = pyaudio.paInt16
 CHANNELS = 1

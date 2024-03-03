@@ -1,7 +1,10 @@
+import collections
+import multiprocessing
+
 import eventlet
 import socketio
 
-q = None
+q: multiprocessing.Queue = None
 
 
 def set_queue(queue):
@@ -28,9 +31,9 @@ def send_vibe(sid, data):
         sio.sleep(1)
 
     while True:
-        print("\t GETTING")
+        print("\tGETTING from out_queue")
         (vi, prompt, perc) = q.get()
-        print(f'SENDING VIBE {vi}:{prompt}:{perc}')
+        print(f'\tSENDING VIBE {vi}:{prompt}:{perc}')
         sio.emit('vibes', {
             "vibes": vi,
             "prompt": prompt,
@@ -45,9 +48,9 @@ def disconnect(sid):
     print('disconnect ', sid)
 
 
-def run_server():
+def forward_data():
     eventlet.wsgi.server(eventlet.listen(('', 8765)), app)
 
 
 if __name__ == '__main__':
-    run_server()
+    forward_data()

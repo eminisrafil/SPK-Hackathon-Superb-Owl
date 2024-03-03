@@ -1,11 +1,5 @@
+import collections
 import multiprocessing
-
-
-# class DataBase:
-#     def __init__(self):
-#         self.state = ""
-#         self.frames: list = []
-#         self.utterances: list['Utterance'] = []
 
 
 class DataBase:
@@ -22,7 +16,7 @@ class DataBase:
         if not hasattr(self, 'initialized'):
             self.state = ""
             self.frames = []
-            self.utterances = []
+            self.utterances = collections.deque(maxlen=10)
             self.initialized = True
 
 

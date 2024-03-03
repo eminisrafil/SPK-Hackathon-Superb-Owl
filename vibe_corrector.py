@@ -3,7 +3,6 @@ import enum
 import json
 import pickle
 import threading
-import time
 
 import eventlet
 from scipy.spatial.distance import cosine
@@ -76,7 +75,6 @@ class State(enum.Enum):
     VIBE_CORRECTING = 2
 
 
-# out_queue = asyncio.Queue()
 out_queue = eventlet.queue.LightQueue()
 
 
@@ -104,37 +102,29 @@ class VibeCorrector:
             should_vibe_correct, self.running_vibe_level = self.vibe_check(text_so_far)
             if should_vibe_correct:
                 self.state = State.VIBE_CORRECTING
-                print(f"Vibe level: {self.running_vibe_level} is not close enough to {self.user_vibe_target} to vibe. Correcting...")
-            else:
-                print(f"Vibing at {self.running_vibe_level}")
         if self.state == State.VIBE_CORRECTING:
             self.state = State.VIBE_CHECKING
-            print("Vibe correction:")
             suggestion = self.steer_conversation(text_so_far)
             suggestion = self.deduplicate_suggestion(suggestion)
-
-            # request post request
-            # requests.post("http://localhost:5000/api/v1/ai/steer_conversation", json={"text": out, "vibration": VIBRATION.ONCE})
-            print("Vibe correction: ", suggestion)
         return suggestion
 
     def deduplicate_suggestion(self, suggestion):
         # Avoid suggesting two similar topics
         current_embedding = fetch_embeddings(suggestion)
-        print(current_embedding.sum(), "Suggestion", suggestion)
+        # print(current_embedding.sum(), "Suggestion", suggestion)
         previous_suggestion, previous_embedding = self.previous_suggestion
         similarity = none_cosine(current_embedding, previous_embedding)
-        print("Similarity: ", similarity, end=" ")
+        # print("Similarity: ", similarity, end=" ")
         if similarity > COSINE_THRESHOLD:
-            print("keeping the previous suggestion")
+            # print("keeping the previous suggestion")
             suggestion = self.previous_suggestion[0]
         else:
-            print("updating a suggestion")
+            # print("updating a suggestion")
             self.previous_suggestion = (suggestion, current_embedding)
         return suggestion
 
     def steer_conversation(self, text):
-        print("Steering conversation")
+        # print("Steering conversation")
         messages = [
             {"role": "system", "content": """\
 You are inside a graphical display, You are part of a meta-agent, you can communicate with the user through messages displayed in a small screen to the user,
@@ -210,7 +200,6 @@ def get_cum_seq():
         sequence_of_words = []
         for row in data:
             out = json.loads(row)
-            # sequence_of_words.append(out['text'])
             sequence_of_words.extend(out['text'].split())
     cum_seq = [" ".join(sequence_of_words[:i]) for i in range(1, len(sequence_of_words) + 1)]
     return cum_seq
@@ -218,7 +207,7 @@ def get_cum_seq():
 
 def offline_replay():
     server.set_queue(out_queue)
-    threading.Thread(target=server.run_server).start()
+    threading.Thread(target=server.forward_data).start()
 
     while True:
         vibe_corrector = get_corrector()
@@ -227,11 +216,8 @@ def offline_replay():
             steering_prompt = vibe_corrector.step_state_machine(text_so_far)
             if steering_prompt:
                 out_queue.put_nowait((VIBRATION.ONCE, steering_prompt, vibe_corrector.running_vibe_level))
-                print(steering_prompt)
             else:
                 out_queue.put_nowait((VIBRATION.NO, "", vibe_corrector.running_vibe_level))
-            time.sleep(5)
-        print("Done")
 
 
 if __name__ == "__main__":
