@@ -1,9 +1,11 @@
 import base64
-from dataclasses import dataclass
+from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime
 import io
 import logging
 import os
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 import uuid
 
 import boto3
@@ -25,8 +27,28 @@ class FaceMetrics:
     brightness: float
     sharpness: float
 
+# Faces that are good enough to run through FaceCheck.id (upscaled already)
+@dataclass
+class FaceSamples:
+    images: List[bytes] = field(default_factory=lambda: [])
+    timestamps: List[datetime] = field(default_factory=lambda: [])
+
+    def num_samples(self) -> int:
+        return len(self.images)
+    
+    def add(self, image_bytes: bytes):
+        self.timestamps.append(datetime.now())
+        self.images.append(image_bytes)
+
+    def time_since_first_image(self) -> float:
+        if len(self.timestamps) <= 0:
+            return 0
+        return datetime.now() - self.timestamps[0]
+
 class FaceService:
     def __init__(self, config: AWSConfiguration):
+        self._max_samples_per_face = 3
+        self._face_samples_by_uuid = defaultdict(FaceSamples)
         self._client = boto3.client(
             'rekognition',
             region_name=config.region_name,
@@ -52,9 +74,16 @@ class FaceService:
         mirrored_image = ImageOps.mirror(rotated_image)  # This line mirrors the image horizontally
         
         # Detect largest face in image, if any
-        image_bytes, metrics = self._detect_largest_face(image=mirrored_image)
-        if image_bytes is None:
+        cropped_image, metrics = self._detect_largest_face(image=mirrored_image)
+        if cropped_image is None:
             return []
+
+        # Scale the image x2 until it is larger than 2KB
+        image_bytes = bytes()
+        upscaled_image = cropped_image
+        while len(image_bytes) < 2048:
+            upscaled_image = upscaled_image.resize((upscaled_image.size[0] * 2, upscaled_image.size[1] * 2))
+            image_bytes = self._get_image_bytes(image=upscaled_image)
 
         # Thresholds to reject poorly visible faces
         good = metrics.area >= 0.0188 and abs(metrics.yaw) <= 40 and metrics.brightness >= 45
@@ -69,7 +98,7 @@ class FaceService:
         #     self._html_fp.write(f"<p>{metrics}</p>\n")
         # self._file_idx += 1
 
-        # Index face and determine whether seen before
+        # Detect face and index if needed
         detected_face_ids = []
         try:
             # Search for the face in the collection
@@ -80,10 +109,8 @@ class FaceService:
                 MaxFaces=1
             )
             face_matches = response.get('FaceMatches', [])
-            known_face = False
             if face_matches:
                 # A known face was detected
-                known_face = True
                 # Base64 encode the image bytes
                 image_bytes_base64 = base64.b64encode(image_bytes).decode('utf-8')
                 # Constructing the message
@@ -105,15 +132,28 @@ class FaceService:
                     QualityFilter="AUTO",
                     DetectionAttributes=['ALL']
                 )
-                known_face = False
+                detected_face_ids.append(index_response["FaceRecords"][0]["Face"]["FaceId"])
         except self._client.exceptions.ClientError as e:
             if e.response['Error']['Code'] == "InvalidParameterException" and "no faces in the image" in e.response["Error"]["Message"]:
                 pass
             else:
                 logger.error(f"Error with AWS Rekognition: {e}")
+
+        # At this point, detected_face_ids[0] holds our face, if it exists
+        if len(detected_face_ids) > 0:
+            face_id = detected_face_ids[0]
+
+            # Store sample and if we reach the max, send for identification
+            face_samples = self._face_samples_by_uuid[face_id]
+            if face_samples.num_samples() < self._max_samples_per_face:
+                face_samples.add(image_bytes=image_bytes)
+                if face_samples.num_samples() == self._max_samples_per_face:
+                    logger.error(f"READY TO SEND {face_id}")
+                    pass
+
         return detected_face_ids
     
-    def _detect_largest_face(self, image: Image) -> Tuple[bytes | None, FaceMetrics | None]:
+    def _detect_largest_face(self, image: Image.Image) -> Tuple[Image.Image | None, FaceMetrics | None]:
         try:
             response = self._client.detect_faces(
                 Image={ 'Bytes': self._get_image_bytes(image=image)  },
@@ -128,14 +168,16 @@ class FaceService:
             face = face_details_descending_size[0]
             bbox = face["BoundingBox"]
 
-            # Crop out the largest image
+            # Crop out the largest image, with 20% padding
             image_width, image_height = image.size
-            x1 = bbox["Left"] * image_width
-            x2 = x1 + bbox["Width"] * image_width
-            y1 = bbox["Top"] * image_height
-            y2 = y1 + bbox["Height"] * image_height
+            horizontal_pad = 0.5 * bbox["Width"] * 0.25 * image_width
+            vertical_pad = 0.5 * bbox["Height"] * 0.25 * image_height
+            x1 = max(0, bbox["Left"] * image_width - horizontal_pad)
+            x2 = min(image_width, x1 + bbox["Width"] * image_width + horizontal_pad)
+            y1 = max(0, bbox["Top"] * image_height - vertical_pad)
+            y2 = min(image_height, y1 + bbox["Height"] * image_height + vertical_pad)
             cropped = image.crop((x1, y1, x2, y2))
-            #cropped.save("cropped.jpg")
+            cropped.save("cropped.jpg")
 
             # Get metrics
             face_metrics = FaceMetrics(
@@ -149,7 +191,7 @@ class FaceService:
                 sharpness=face["Quality"]["Sharpness"]
             )
 
-            return self._get_image_bytes(image=cropped), face_metrics
+            return cropped, face_metrics
 
         except self.client.exceptions.ClientError as e:
             logger.error(f"Error with AWS Rekognition face detection: {e}")
@@ -157,7 +199,7 @@ class FaceService:
         return None
 
     @staticmethod
-    def _get_image_bytes(image: Image) -> bytes:
+    def _get_image_bytes(image: Image.Image) -> bytes:
         buffer = io.BytesIO()
         image.save(buffer, format="JPEG")
         return buffer.getvalue()
