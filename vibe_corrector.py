@@ -206,7 +206,7 @@ def get_corrector():
 
 
 def get_cum_seq():
-    return fetch_and_process(Utterance)
+    return [u.text for u in fetch_and_process(Utterance)]
 
 
 def offline_replay():
@@ -215,7 +215,12 @@ def offline_replay():
 
     vibe_corrector = get_corrector()
     while True:
-        for text_so_far in get_cum_seq():
+        cum_seq = get_cum_seq()
+        if not cum_seq:
+            print("Watiing for the first sequence.")
+            time.sleep(5)
+            continue
+        for text_so_far in cum_seq:
             steering_prompt = vibe_corrector.step_state_machine(text_so_far)
             if steering_prompt:
                 out_queue.put_nowait((VIBRATION.ONCE, steering_prompt, vibe_corrector.running_vibe_level))
