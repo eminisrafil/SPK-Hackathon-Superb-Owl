@@ -3,6 +3,8 @@ import yaml
 import os
 from typing import Optional
 
+class ScrapingBeeConfiguration(BaseModel):
+    api_key: str
 
 class AWSConfiguration(BaseModel):
     region_name: str
@@ -116,3 +118,4 @@ class Configuration(BaseModel):
     notification: NotificationConfiguration
     udp: UDPConfiguration
     bing: BingConfiguration | None = None
+    scraping_bee: ScrapingBeeConfiguration | None = None
