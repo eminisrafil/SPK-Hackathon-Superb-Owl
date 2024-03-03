@@ -236,7 +236,11 @@ class FaceService:
             if len(parts) != 2:
                 continue
             image_base64 = parts[1]
-            image_bytes = base64.b64decode(image_base64)
+
+            # Convert from webp -> JPEG for Amazon
+            webp_image_bytes = base64.b64decode(image_base64)
+            webp_image_buffer = io.BytesIO(webp_image_bytes)
+            image_bytes = self._get_image_bytes(image=Image.open(webp_image_buffer))
 
             # Try to look up face in AWS (to validate that the person result from FaceCheck is the
             # same person we sent)
