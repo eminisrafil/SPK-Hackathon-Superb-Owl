@@ -94,7 +94,7 @@ async def identify_person(config: Configuration, images: List[bytes]) -> List[Pe
         
 
 ####################################################################################################
-# Face Detection and Recognition Service
+# Face Detection and Recognition Service (Implementation)
 #
 # Detects and extracts faces, assigns unique IDs to them using AWS Rekognition.
 ####################################################################################################
@@ -129,10 +129,9 @@ class FaceSamples:
             return 0
         return datetime.now() - self.timestamps[0]
 
-class FaceService:
-    def __init__(self, config: Configuration, notification_service):
+class _FaceService:
+    def __init__(self, config: Configuration):
         self._config = config
-        self._notification_service = notification_service
         self._llm_service = LLMService(config.llm)
         self._max_samples_per_face = 3
         self._face_samples_by_uuid = defaultdict(FaceSamples)
@@ -292,12 +291,6 @@ class FaceService:
                                 {"content": f"Web data: {formatted_urls_data}", "role": "user"}
                             ])
                         print(llm_result)
-                        message = {
-                            "faceId": llm_result.choices[0].message['tool_calls'][0].function.arguments,
-                        }
-                        # Emit the message
-
-                        await self._notification_service.emit_message("known_face", message)
                     print(person_results)
 
         return []
@@ -309,8 +302,8 @@ class FaceService:
         """
 
         for i, image_bytes in enumerate(images):
-                    with open(f"submitted_{target_face_id}_{i}.webp", mode="wb") as fp:
-                        fp.write(image_bytes)
+            with open(f"submitted_{target_face_id}_{i}.webp", mode="wb") as fp:
+                fp.write(image_bytes)
 
         results = await identify_person(config=self._config, images=images)
 
@@ -424,3 +417,71 @@ class FaceService:
             print('Status code:', response['StatusCode'])
         except Exception as e:
             print(f"Error: {e}")
+
+
+####################################################################################################
+# Inter-process Communication
+####################################################################################################
+
+@dataclass
+class DetectFacesCommand:
+    image_bytes: bytes
+
+@dataclass
+class DetectFacesResult:
+    persons: List[PersonResult]
+
+@dataclass
+class TerminateProcessCommand:
+    pass
+
+####################################################################################################
+# Face Service (Public)
+####################################################################################################
+
+from multiprocessing import Queue, Process
+from ...core.utils import AsyncMultiprocessingQueue
+
+class FaceService:
+    def __init__(self, config: Configuration, notification_service):
+        self._notification_service = notification_service
+        self._request_queue = AsyncMultiprocessingQueue(queue=Queue())
+        self._response_queue = AsyncMultiprocessingQueue(queue=Queue())
+        # Start process
+        process_args = (
+            self._request_queue.underlying_queue(),
+            self._response_queue.underlying_queue(),
+            config
+        )
+        self._process = Process(target=FaceService._run, args=process_args)
+        self._process.start()
+
+    def __del__(self):
+        self._request_queue.underlying_queue().put(TerminateProcessCommand())
+        self._process.join()
+
+    async def detect_faces(self, image_bytes: bytes) -> List[PersonResult]:
+        await self._request_queue.put(DetectFacesCommand(image_bytes=image_bytes))
+        response = await self._response_queue.get()
+        if isinstance(response, DetectFacesResult):
+            #TODO: send notification here
+            return response.persons
+        return []
+    
+    def _run(request_queue: Queue, response_queue: Queue, config: Configuration):
+        face_service = _FaceService(config=config)
+
+        while True:
+            request = request_queue.get()
+            
+            # Command: terminate process
+            if isinstance(request, TerminateProcessCommand):
+                break
+
+            # Command: detect face
+            if isinstance(request, DetectFacesCommand):
+                request: DetectFacesCommand = request
+                persons = asyncio.run(face_service.detect_faces(image_bytes=request.image_bytes))
+                response_queue.put(DetectFacesResult(persons=persons))
+        
+        print("TERMINATED FACE SERVICE PROCESS")
