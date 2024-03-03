@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -8,13 +9,73 @@ import os
 from typing import Dict, List, Tuple
 import uuid
 
+import aiohttp
+from aiohttp import FormData
 import boto3
 from PIL import Image, ImageOps
 
-from ...core.config import AWSConfiguration
+from ...core.config import Configuration
+
 
 logger = logging.getLogger(__name__)
 
+
+####################################################################################################
+# Person Identification
+#
+# Performs a search using FaceCheck.id.
+####################################################################################################
+
+TESTING_MODE = False
+
+async def identify_person(config: Configuration, images: List[bytes]):
+    site = 'https://facecheck.id'
+    headers = {
+        'Accept': 'application/json',
+        'Authorization': config.face_check.api_key,
+    }
+
+    async with aiohttp.ClientSession() as session:
+        form = FormData()
+        for i, image_bytes in enumerate(images):
+            form.add_field('images', image_bytes, filename=f"image-{i}.jpg", content_type='image/jpeg')
+        
+        try:
+            # Post the image for initial processing/upload
+            async with session.post(f"{site}/api/upload_pic", data=form, headers=headers) as response:
+                response_data = await response.json()
+
+                id_search = response_data['id_search']
+                print(f"{response_data['message']} id_search={id_search}")
+
+                json_data = {
+                    'id_search': id_search,
+                    'with_progress': True,
+                    'status_only': False,
+                    'demo': TESTING_MODE,
+                }
+
+                while True:
+                    # Perform the search
+                    async with session.post(f"{site}/api/search", json=json_data, headers=headers) as response:
+                        response_data = await response.json()
+
+                        if response_data.get('output'):
+                            return response_data['output']['items']
+                        
+                        print(f"{response_data['message']} progress: {response_data['progress']}%")
+                        await asyncio.sleep(1)
+
+        except Exception as e:
+            logger.error(f"Person identification: {e}")
+            return None
+        
+
+####################################################################################################
+# Face Detection and Recognition Service
+#
+# Detects and extracts faces, assigns unique IDs to them using AWS Rekognition.
+####################################################################################################
 
 @dataclass
 class FaceMetrics:
@@ -46,16 +107,17 @@ class FaceSamples:
         return datetime.now() - self.timestamps[0]
 
 class FaceService:
-    def __init__(self, config: AWSConfiguration):
+    def __init__(self, config: Configuration):
+        self._config = config
         self._max_samples_per_face = 3
         self._face_samples_by_uuid = defaultdict(FaceSamples)
         self._client = boto3.client(
             'rekognition',
-            region_name=config.region_name,
-            aws_access_key_id=config.access_key,
-            aws_secret_access_key=config.secret_access_key
+            region_name=config.aws.region_name,
+            aws_access_key_id=config.aws.access_key,
+            aws_secret_access_key=config.aws.secret_access_key
         )
-        self._collection_id = config.rekognition_collection_id
+        self._collection_id = config.aws.rekognition_collection_id
         self._create_collection_if_not_exists()
 
     #     os.makedirs("face_images", exist_ok=True)
@@ -67,7 +129,7 @@ class FaceService:
     #     self._html_fp.write("\n</body>\n</html>")
     #     self._html_fp.close()
     
-    def detect_faces(self, image_bytes: bytes) -> List[str]:
+    async def detect_faces(self, image_bytes: bytes) -> List[str]:
         # Pre-process image
         image = Image.open(io.BytesIO(image_bytes))
         rotated_image = image.rotate(90, expand=True)
@@ -148,8 +210,10 @@ class FaceService:
             if face_samples.num_samples() < self._max_samples_per_face:
                 face_samples.add(image_bytes=image_bytes)
                 if face_samples.num_samples() == self._max_samples_per_face:
-                    logger.error(f"READY TO SEND {face_id}")
-                    pass
+                    # Got sufficient samples, ready to ID
+                    logger.info(f"SEARCHING PERSON {face_id}")
+                    results = await identify_person(config=self._config, images=face_samples.images)
+                    print(results)
 
         return detected_face_ids
     
