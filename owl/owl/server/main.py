@@ -85,7 +85,7 @@ def create_server_app(config: Configuration) -> FastAPI:
     capture_service = CaptureService(config=config, database=database)
     bing_search_service = BingSearchService(config=config.bing) if config.bing else None
     conversation_service = ConversationService(config, database, transcription_service, notification_service, bing_search_service)
-    face_service = FaceService(config=config)
+    face_service = FaceService(config=config, notification_service=notification_service)
 
     # Create server app
     app = FastAPI()
@@ -102,6 +102,7 @@ def create_server_app(config: Configuration) -> FastAPI:
     socket_app = CaptureSocketApp(app_state = AppState.get(from_obj=app))
     socket_app.mount_to(app=app, at_path="/socket.io")
     notification_service.socket_app = socket_app
+    
     app.include_router(capture_router)
     app.include_router(conversations_router)
 

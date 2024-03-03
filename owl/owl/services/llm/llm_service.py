@@ -29,11 +29,12 @@ class LLMService:
 
         return completion(**llm_params)
 
-    async def async_llm_completion(self, messages):
+    async def async_llm_completion(self, messages, tools=None):
         logger.info(f"LLM completion request for model {self._model}...")
         llm_params = {
             "model": self._model,
-            "messages": messages
+            "messages": messages,
+            "tools": tools
         }
 
         if self._config.api_base_url:
