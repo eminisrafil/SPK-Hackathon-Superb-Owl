@@ -13,6 +13,7 @@ from ..llm.llm_service import LLMService
 import aiohttp
 from aiohttp import FormData
 import boto3
+import cv2
 from PIL import Image, ImageOps
 from bs4 import BeautifulSoup
 import json
@@ -132,6 +133,7 @@ class FaceMetrics:
     yaw: float
     brightness: float
     sharpness: float
+    cv_sharpness: float
 
 # Faces that are good enough to run through FaceCheck.id (upscaled already)
 @dataclass
@@ -358,6 +360,10 @@ class FaceService:
             cropped = image.crop((x1, y1, x2, y2))
             #cropped.save("cropped.jpg")
 
+            # Compute our own sharpness metric
+            gray = cv2.cvtColor(np.array(cropped), cv2.COLOR_BGR2GRAY)
+            cv_sharpness = cv2.Laplacian(src=gray, ddepth=cv2.CV_64F).var()
+
             # Get metrics
             face_metrics = FaceMetrics(
                 area=bbox["Width"] * bbox["Height"],
@@ -367,7 +373,8 @@ class FaceService:
                 face_occluded_confidence=face["FaceOccluded"]["Confidence"],
                 yaw=face["Pose"]["Yaw"],
                 brightness=face["Quality"]["Brightness"],
-                sharpness=face["Quality"]["Sharpness"]
+                sharpness=face["Quality"]["Sharpness"],
+                cv_sharpness=cv_sharpness
             )
 
             return cropped, face_metrics
