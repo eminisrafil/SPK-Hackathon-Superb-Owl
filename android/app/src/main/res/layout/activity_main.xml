@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<RelativeLayout
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+
+    <com.airbnb.lottie.LottieAnimationView
+        android:id="@+id/lottieAnimationView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerInParent="true"
+        app:lottie_fileName="ChillVibe.json"
+        app:lottie_autoPlay="true"
+        app:lottie_loop="true"/>
+
+<!--    <TextView-->
+<!--        android:id="@+id/owlEmoji"-->
+<!--        android:layout_width="wrap_content"-->
+<!--        android:layout_height="wrap_content"-->
+<!--        android:text="🦉"-->
+<!--        android:rotation="0"-->
+<!--    android:textSize="160sp"-->
+<!--    android:layout_centerInParent="true"-->
+<!--    android:textColor="#FFFFFF"/>-->
+
+    <TextView
+        android:id="@+id/mytext"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="hello world"
+        android:rotation="0"
+        android:textSize="36sp"
+        android:layout_centerInParent="true"
+        android:textColor="#FFFFFF"/>
+
+    <TextView
+        android:id="@+id/myprompt"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="prompt"
+        android:textSize="40sp"
+        android:layout_below="@id/mytext"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="20dp"
+        android:textColor="#FFFFFF"/>
+
+
+
+</RelativeLayout>
