@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import threading
 from datetime import timezone, datetime
 
 from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, DateTime
-from sqlalchemy.orm import sessionmaker, scoped_session, declarative_base, relationship, Mapped
+from sqlalchemy.orm import scoped_session, declarative_base, relationship, Mapped, sessionmaker
 from sqlmodel import Session
 
 Base = declarative_base()
@@ -15,15 +16,15 @@ class Context(Base):
     updated_at: datetime = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                                   onupdate=lambda: datetime.now(timezone.utc), index=False)
     id: int = Column(Integer, primary_key=True, index=True)
-    state: str = Column(String, index=True)
     frames: Mapped["Frame"] = relationship("Frame", back_populates="context")
     utterances: Mapped["Utterance"] = relationship("Utterance", back_populates="context")
+    humans: Mapped["Human"] = relationship("Human", back_populates="context")
 
 
 class Frame(Base):
     __tablename__ = "frames"
     id: int = Column(Integer, primary_key=True, index=True)
-    frame: int = Column(String, index=True)
+    frame: int = Column(String, index=False)
     context_id: int = Column(Integer, ForeignKey("contexts.id"))
     created_at: datetime = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     context: Mapped["Context"] = relationship("Context", back_populates="frames")
@@ -32,10 +33,10 @@ class Frame(Base):
 class Utterance(Base):
     __tablename__ = "utterances"
     id: int = Column(Integer, primary_key=True, index=True)
-    start: float = Column(Float, index=True)
-    end: float = Column(Float, index=True)
-    spoken_at: str = Column(String, index=True)
-    text: str = Column(String, index=True)
+    start: float = Column(Float, index=False)
+    end: float = Column(Float, index=False)
+    spoken_at: str = Column(String, index=False)
+    text: str = Column(String, index=False)
     speaker: str = Column(String, index=True)
     created_at: datetime = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
@@ -43,14 +44,37 @@ class Utterance(Base):
     context: Mapped["Context"] = relationship("Context", back_populates="utterances")
 
 
+class Human(Base):
+    __tablename__ = "humans"
+    id: int = Column(Integer, primary_key=True, index=True)
+    name: str = Column(String, index=True)
+    text: str = Column(String, index=False)
+    picture: bytes = Column(String, index=False)
+    created_at: datetime = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+    context_id: int = Column(Integer, ForeignKey("contexts.id"))
+    context: Mapped["Context"] = relationship("Context", back_populates="humans")
+
+
 def create_utterance(db: Session, utterance: Utterance) -> Utterance:
-    db.add(utterance)
+    with threading.Lock():
+        db.add(utterance)
+        db.commit()
+        db.refresh(utterance)
+        current_context = db.get(Context, utterance.context_id)
+        current_context.updated_at = datetime.now(timezone.utc)
+        db.commit()
+    return utterance
+
+
+def create_human(db: Session, human: Human) -> Human:
+    db.add(human)
     db.commit()
-    db.refresh(utterance)
-    current_context = db.get(Context, utterance.context_id)
+    db.refresh(human)
+    current_context = db.get(Context, human.context_id)
     current_context.updated_at = datetime.now(timezone.utc)
     db.commit()
-    return utterance
+    return human
 
 
 def create_frame(db: Session, frame: Frame) -> Frame:
@@ -108,15 +132,21 @@ class Database:
         self.__del__()
 
 
-def main():
+def fetch_and_process(model):
     with Database() as db:
-        context = Context()
-        frame = Frame(frame=1, context=context)
-        utterance = Utterance(start=0, end=1, spoken_at="2021-01-01", text="Hello", speaker="Alice", context=context)
-        create_context(db, context)
-        create_frame(db, frame)
-        create_utterance(db, utterance)
+        ctx: Context = get_active_context(db)
+        query = db.query(model).filter(model.context_id == ctx.id)
+        return query.all()
 
-
-if __name__ == "__main__":
-    main()
+# def main():
+#     with Database() as db:
+#         context = Context()
+#         frame = Frame(frame=1, context=context)
+#         utterance = Utterance(start=0, end=1, spoken_at="2021-01-01", text="Hello", speaker="Alice", context=context)
+#         create_context(db, context)
+#         create_frame(db, frame)
+#         create_utterance(db, utterance)
+#
+#
+# if __name__ == "__main__":
+#     main()

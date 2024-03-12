@@ -34,9 +34,9 @@ from .streaming_capture_handler import StreamingCaptureHandler
 
 logger = logging.getLogger(__name__)
 
+
 # TODO: How to handle logging configuration?
 class ColorfulLogger(logging.StreamHandler):
-
     FORMAT = {
         logging.DEBUG: Fore.CYAN + "%(message)s" + Fore.RESET,
         logging.INFO: Fore.GREEN + "%(message)s" + Fore.RESET,
@@ -55,11 +55,13 @@ class ColorfulLogger(logging.StreamHandler):
         string = logging.StreamHandler.format(self, record)
         return ColorfulLogger.FORMAT[record.levelno] % {'message': string}
 
+
 def setup_logging():
-     init(autoreset=True)
-     logging.root.setLevel(logging.INFO)
-     handler = ColorfulLogger()
-     logging.root.addHandler(handler)
+    init(autoreset=True)
+    logging.root.setLevel(logging.INFO)
+    handler = ColorfulLogger()
+    logging.root.addHandler(handler)
+
 
 async def process_queue(app_state: AppState):
     logger.info("Starting server task processing queue...")
@@ -73,6 +75,7 @@ async def process_queue(app_state: AppState):
             app_state.task_queue.task_done()
         else:
             await asyncio.sleep(1)
+
 
 def create_server_app(config: Configuration) -> FastAPI:
     setup_logging()
@@ -99,7 +102,7 @@ def create_server_app(config: Configuration) -> FastAPI:
         bing_search_service=bing_search_service,
         face_service=face_service
     )
-    socket_app = CaptureSocketApp(app_state = AppState.get(from_obj=app))
+    socket_app = CaptureSocketApp(app_state=AppState.get(from_obj=app))
     socket_app.mount_to(app=app, at_path="/socket.io")
     notification_service.socket_app = socket_app
     app.include_router(capture_router)

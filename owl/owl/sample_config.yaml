@@ -6,23 +6,22 @@
 # --config=config.yaml when running the server.
 #
 
-# Configure this with your name and a create a secure token (which must also be entered into the 
+# Configure this with your name and a create a secure token (which must also be entered into the
 # e.g. iOS client app)
 user:
   name: "Bob"
-  client_token: your_own_secret_token
 
 # Choose an LLM. To use OpenAI models, 'api_key' must be valid and 'api_base_url' must remain blank.
 llm:
   # Local mistral
-    model: ollama/mistral:instruct
-    api_base_url: http://localhost:11434
-    api_key: 
-    
+  model: ollama/mistral:instruct
+  api_base_url: http://localhost:11434
+  api_key:
+
   # OpenAI
   #
   # model: gpt-4-1106-preview
-  # api_base_url: 
+  # api_base_url:
   # api_key: your_llm_api_key_if_needed
 
 

@@ -2,3 +2,8 @@
 *.jpg
 *.jpeg
 config.yaml
+.cache/
+.env
+/output.json
+/cache_calls.log
+/transcription.pkl
